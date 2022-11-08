@@ -5,11 +5,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <unistd.h>
 #include <sys/ipc.h> 
 #include <sys/sem.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <assert.h>
 
 #include "myassert.h"
 
@@ -40,7 +42,7 @@ static void usage(const char *exeName, const char *message)
 /************************************************************************
  * boucle principale de communication avec le client
  ************************************************************************/
-void loop(const int semid)
+void loop(const int semsid, int f)
 {
     // boucle infinie :
     while(true){
@@ -53,12 +55,10 @@ void loop(const int semid)
         // - attente d'un ordre du client (via le tube nommé)
         int order;
         int retp = read(pctm, &order, sizeof(int));
-        assert(ret == sizeof(int));
+        assert(retp == sizeof(int));
 
         switch (order){
-        // - si ORDER_STOP
-        //       . envoyer ordre de fin au premier worker et attendre sa fin
-        //       . envoyer un accusé de réception au client
+        // - si ORDER_STOP, envoyer ordre de fin au premier worker et attendre sa fin, envoyer un accusé de réception au client
         case ORDER_STOP :
             break;
 
@@ -71,19 +71,19 @@ void loop(const int semid)
         //       . envoyer N dans le pipeline
         //       . récupérer la réponse
         //       . la transmettre au client
-        case ORDER_COMPUTE_PRIME :
-            int n;
+        case ORDER_COMPUTE_PRIME :{
+            int n = 0;
             retp = read(pctm, &n, sizeof(int));
-            assert(ret == sizeof(int));
+            assert(retp == sizeof(int));
+            printf("Oui : %d\n", n);
+        }
             break;
             
-        // - si ORDER_HOW_MANY_PRIME
-        //       . transmettre la réponse au client
+        // - si ORDER_HOW_MANY_PRIME, transmettre la réponse au client
         case ORDER_HOW_MANY_PRIME :
             break;
 
-        // - si ORDER_HIGHEST_PRIME
-        //       . transmettre la réponse au client
+        // - si ORDER_HIGHEST_PRIME, transmettre la réponse au client
         case ORDER_HIGHEST_PRIME :
             break;
 
@@ -98,12 +98,7 @@ void loop(const int semid)
         assert(retp == 0);
 
         // - attendre ordre du client avant de continuer (sémaphore : précédence)
-        struct sembuf semb [1];
-        semb[0].sem_num = 0;
-        semb[0].sem_op = -1;
-        semb[0].sem_flg = 0;
-        int retop = semop(semstopid, semb, 1);
-        assert(retop != -1);
+        my_semop(semsid, -1);
 
         // - revenir en début de boucle
     }
@@ -124,14 +119,14 @@ int main(int argc, char * argv[])
     }
 
     // - création des sémaphores
-    int semtid = semget(CLE_SEM_TUBE, 1, IPC_CREAT | 0664);
+    int semtid = semget(CLE_SEM_TUBE, 1, IPC_CREAT | 0664); //Creation semaphore pour tubes
     assert(semtid != -1);
-    int retctl = semctl(semtid, 0, SETVAL, 1);
+    int retctl = semctl(semtid, 0, SETVAL, 1); //Init semaphore pour tubes
     assert(retctl != -1);
 
-    int semsid = semget(CLE_SEM_STOP 1, IPC_CREAT | 0664);
+    int semsid = semget(CLE_SEM_STOP, 1, IPC_CREAT | 0664); //Creation semaphore stop
     assert(semsid != -1);
-    int retctl = semctl(semsid, 0, SETVAL, 0);
+    retctl = semctl(semsid, 0, SETVAL, 0); //Init semaphore stop
     assert(retctl != -1);
 
     // - création des tubes nommés
@@ -143,12 +138,12 @@ int main(int argc, char * argv[])
     // - création du premier worker
     int f = fork();
     if(f == 0){
-        int ret = exec("worker");
+        int ret = execl("worker", "a");
         myassert_func(ret != -1, "Prob exec", argv[0], "main", 0);
     }
 
     // boucle infinie
-    loop(/* paramètres */);
+    loop(semsid);
 
     // destruction des tubes nommés, des sémaphores, ...
     retmkf = unlink(PIPE_CTM);
@@ -156,7 +151,9 @@ int main(int argc, char * argv[])
     retmkf = unlink(PIPE_MTC);
     assert(retmkf == 0);
 
-    retctl = semctl(semid, -1, IPC_RMID);
+    retctl = semctl(semsid, -1, IPC_RMID);
+    assert(retctl != -1);
+    retctl = semctl(semtid, -1, IPC_RMID);
     assert(retctl != -1);
 
     return EXIT_SUCCESS;

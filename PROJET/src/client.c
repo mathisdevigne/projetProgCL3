@@ -87,15 +87,7 @@ static int parseArgs(int argc, char * argv[], int *number)
  * Mes fonctions & utils
  ************************************************************************/
 
-void my_semop(int semid, int sem_op){
-    struct sembuf semb [1];
-    semb[0].sem_num = 0;
-    semb[0].sem_op = sem_op;
-    semb[0].sem_flg = 0;
 
-    int retop = semop(semid, semb, 1);
-    assert(retop != -1);
-}
 
 struct dataThread{
     bool *tab;
@@ -108,9 +100,7 @@ void * codeThread(void * arg){
     struct dataThread *data = (struct dataThread *) arg;
 
     pthread_mutex_lock(data->mutex);
-    printf("DEBUT : %d %d\n", data->i, data->n);
     for(int j = 2 * data->i; j < data->n; j+=data->i){
-        printf("FAUX : %d %d %d\n", j, data->i, data->n);
         (data->tab)[j-2] = false;
     }
     pthread_mutex_unlock(data->mutex);
@@ -172,44 +162,35 @@ int main(int argc, char * argv[])
     int order = parseArgs(argc, argv, &number);
     printf("%d\n", order); // pour éviter le warning
 
-    // order peut valoir 5 valeurs (cf. master_client.h) :
-    //      - ORDER_COMPUTE_PRIME_LOCAL
-    //      - ORDER_STOP
-    //      - ORDER_COMPUTE_PRIME
-    //      - ORDER_HOW_MANY_PRIME
-    //      - ORDER_HIGHEST_PRIME
-    //
-    // si c'est ORDER_COMPUTE_PRIME_LOCAL
-    //    alors c'est un code complètement à part multi-thread
+    // order peut valoir 5 valeurs (cf. master_client.h) : - ORDER_COMPUTE_PRIME_LOCAL - ORDER_STOP - ORDER_COMPUTE_PRIME - ORDER_HOW_MANY_PRIME - ORDER_HIGHEST_PRIME
+
+    // si c'est ORDER_COMPUTE_PRIME_LOCAL alors c'est un code complètement à part multi-thread
     if(order == ORDER_COMPUTE_PRIME_LOCAL){
         sieveOfEratosthenes(number);
     }
     // sinon
     else{
-        //    - entrer en section critique :
-        //           . pour empêcher que 2 clients communiquent simultanément
-        //           . le mutex est déjà créé par le master
-        int semtid = semget(CLE_SEM_TUBE, 1, 0);
+        //    - entrer en section critique : - pour empêcher que 2 clients communiquent simultanément - le mutex est déjà créé par le master
+        int semtid = semget(CLE_SEM_TUBE, 1, 0); //semaphore pour tubes
         assert(semtid != -1);
 
         my_semop(semtid, -1);
 
-        int semsid = semget(CLE_SEM_STOP, 1, 0);
+        int semsid = semget(CLE_SEM_STOP, 1, 0); //semaphore pour débloquer le master
         assert(semsid != -1);
 
 
-        //    - ouvrir les tubes nommés (ils sont déjà créés par le master)
-        //           . les ouvertures sont bloquantes, il faut s'assurer que
-        //             le master ouvre les tubes dans le même ordre
-        int pctm = open(PIPE_CTM, O_WRONLY);
+        //    - ouvrir les tubes nommés (ils sont déjà créés par le master), les ouvertures sont bloquantes, il faut s'assurer que le master ouvre les tubes dans le même ordre
+        int pctm = open(PIPE_CTM, O_WRONLY); //pipe client to master
         assert(pctm != -1);
-        int pmtc = open(PIPE_MTC, O_RDONLY);
+        int pmtc = open(PIPE_MTC, O_RDONLY); //pipe master to client
         assert(pmtc != -1);
 
         //    - envoyer l'ordre et les données éventuelles au master
-        int retw = write(pctm, &order, sizeof(int));
+        int retw = write(pctm, &order, sizeof(int)); //Ecriture de l'argument
         assert(retw == sizeof(int));
-        if(order == ORDER_COMPUTE_PRIME){
+
+        if(order == ORDER_COMPUTE_PRIME){ //Si on envoie un second argument
             int secArg = atoi(argv[2]);
             retw = write(pctm, &secArg, sizeof(int));
             assert(retw == sizeof(int));
