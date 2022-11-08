@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "stat.h": "c",
+        "stdbool.h": "c",
+        "fcntl.h": "c",
+        "math.h": "c",
+        "myassert.h": "c"
+    }
+}
