@@ -12,7 +12,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <semaphore.h>
-
+#include <assert.h>
 #include "myassert.h"
 
 #include "master_client.h"
@@ -89,51 +89,78 @@ static int parseArgs(int argc, char * argv[], int *number)
 
 void my_semop(int semid, int sem_op){
     struct sembuf semb [1];
-    sembt[0].sem_num = 0;
-    sembt[0].sem_op = sem_op;
-    sembt[0].sem_flg = 0;
+    semb[0].sem_num = 0;
+    semb[0].sem_op = sem_op;
+    semb[0].sem_flg = 0;
 
     int retop = semop(semid, semb, 1);
     assert(retop != -1);
 }
 
 struct dataThread{
-    int *tab;
+    bool *tab;
+    int i;
     int n;
-    sem_t *sem;
-}
+    pthread_mutex_t *mutex;
+};
 
 void * codeThread(void * arg){
-    int *data = (struct dataThread *) arg;
+    struct dataThread *data = (struct dataThread *) arg;
 
+    pthread_mutex_lock(data->mutex);
+    printf("DEBUT : %d %d\n", data->i, data->n);
+    for(int j = 2 * data->i; j < data->n; j+=data->i){
+        printf("FAUX : %d %d %d\n", j, data->i, data->n);
+        (data->tab)[j-2] = false;
+    }
+    pthread_mutex_unlock(data->mutex);
 
     return NULL;
 }
 
 void sieveOfEratosthenes(int n){
     //Init
-    bool tab = malloc(sizeof(bool) * n-2);
+    bool *tab = malloc(sizeof(bool) * n-2);
     for(int i = 0; i < n-2; i++){
         tab[i] = true;
     }
     int nbThreads = ((int) sqrt(n)) - 1;
-    sem_t sem;
-    ret = sem_init(&sem, 0, 0);
+    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
     //Data init
-    for(int i = 0; i < nbThreads; i++){
-        struct dataThread datas;
-        datas.n = i + 2;
-        datas.tab = tab;
-        datas.sem = &sem;
+    struct dataThread *datas = malloc(sizeof(struct dataThread) * n-2);
+    for(int i = 0; i < n-2; i++){
+        datas[i].i = i + 2;
+        datas[i].n = n;
+        datas[i].tab = tab;
+        datas[i].mutex = &mutex;
     }
 
     //Threads
-    pthread_t threadTab = malloc(sizeof(pthread_t) * nbThreads);
+    pthread_t *threadTab = malloc(sizeof(pthread_t) * nbThreads);
     for(int i = 0; i < nbThreads; i++){
-        int ret = pthread_create(&(threadTab[i]), NULL, codeThread, &curN);
+        int ret = pthread_create(&(threadTab[i]), NULL, codeThread, datas + i);
         assert(ret == 0);
     }
+
+    for(int i = 0; i < nbThreads; i++){
+        int ret = pthread_join(threadTab[i], NULL);
+        assert(ret == 0);
+    }
+
+
+    //print
+    for(int i = 0; i < n-2; i++){
+        printf("%d : %s   ", i+2, tab[i] ? "true" : "false");
+        if(i%10 == 9){
+            printf("\n");
+        }
+    }
+
+    //Del data
+    pthread_mutex_destroy(&mutex);
+    free(datas);
+    free(tab);
 }
 /************************************************************************
  * Fonction principale
@@ -155,7 +182,7 @@ int main(int argc, char * argv[])
     // si c'est ORDER_COMPUTE_PRIME_LOCAL
     //    alors c'est un code complètement à part multi-thread
     if(order == ORDER_COMPUTE_PRIME_LOCAL){
-        
+        sieveOfEratosthenes(number);
     }
     // sinon
     else{
@@ -198,7 +225,7 @@ int main(int argc, char * argv[])
         my_semop(semtid, 1);
 
         //    - libérer les ressources (fermeture des tubes, ...)
-        retp = close(pctm);
+        int retp = close(pctm);
         assert(retp == 0);
         retp = close(pmtc);
         assert(retp == 0);
