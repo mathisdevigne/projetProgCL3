@@ -24,6 +24,6 @@
 
 // bref n'hésitez à mettre nombre de fonctions avec des noms explicites
 // pour masquer l'implémentation
-void my_semop(int semid, int sem_op); //id du semaphore et de l'operation a lui appliquer (marche seulement avec les semaphore simple)
+void mysemop(int semid, int sem_op); //id du semaphore et de l'operation a lui appliquer (marche seulement avec les semaphore simple)
 
 #endif

@@ -28,6 +28,18 @@
 #ifndef MYASSERT_H
 #define MYASSERT_H
 
+void myexecv(char *name, char **arg);
+void mypipe(int t[]);
+void myunlink(const char *p);
+void mysemctlwithval(const int semid, const int semno, const int cmd, const int val);
+void mysemctlnoval(const int semid, const int semno, const int cmd);
+int mysemget(const int key, const int nb, const int order);
+void mymkfifo(const char *name, const int n);
+int myopen(const char * name, const int order);
+void myclose(const int p);
+void myread(const int fd, void *buf, const size_t size);
+void mywrite(const int fd, const void *buf, const size_t size);
+
     #ifndef NDEBUG
         #include <stdbool.h>
         void myassert_func(bool condition, const char *message, const char *filename,

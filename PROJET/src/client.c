@@ -12,7 +12,8 @@
 #include <math.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include <assert.h>
+#include <assert.h>	
+#include <unistd.h>
 #include "myassert.h"
 
 #include "master_client.h"
@@ -88,19 +89,77 @@ static int parseArgs(int argc, char * argv[], int *number)
  ************************************************************************/
 
 
+typedef struct{
+    int order;
+    int n;
 
-struct dataThread{
+    int semtid;
+    int semsid;
+
+    int pReadMaster;
+    int pWriteMaster;
+} dataC;
+
+void initClient(dataC *data){
+    //    - entrer en section critique :
+    data->semtid = mysemget(CLE_SEM_TUBE, 1, 0); //semaphore named pipe
+    mysemop(data->semtid, -1);
+
+    data->semsid = mysemget(CLE_SEM_STOP, 1, 0); //semaphore release master
+
+    //    - ouvrir les tubes nommés (ils sont déjà créés par le master), les ouvertures sont bloquantes, il faut s'assurer que le master ouvre les tubes dans le même ordre
+    data->pReadMaster = myopen(PIPE_MTC, O_RDONLY);
+    data->pWriteMaster = myopen(PIPE_CTM, O_WRONLY);
+}
+
+
+void sendOrderAndData(dataC data){
+    mywrite(data.pWriteMaster, &data.order, sizeof(int)); //    - envoyer l'ordre et les données éventuelles au master
+
+    if(data.order == ORDER_COMPUTE_PRIME){ //Send a 2nd arg
+        mywrite(data.pWriteMaster, &(data.n), sizeof(int));
+    }
+}
+
+void receiveAnswer(dataC data){
+    if(data.order == ORDER_COMPUTE_PRIME){ //Receive a bool
+        bool mRep;
+        myread(data.pReadMaster, &mRep, sizeof(bool));
+        printf("Reponse : %d %s premier\n", data.n, mRep ? "est" : "n'est pas");
+    }
+    else{ // Receive an int
+        int mRep;
+        myread(data.pReadMaster, &mRep, sizeof(int));
+        if(data.order == ORDER_STOP){
+            myassert(mRep == ORDER_STOP, "bad return");
+        }
+        else{
+            printf("Reponse : %d\n", mRep);
+        }
+    }
+}
+
+void closeClient(dataC data){
+    mysemop(data.semtid, 1); //    - sortir de la section critique
+        
+    myclose(data.pWriteMaster); //    - libérer les ressources (fermeture des tubes, ...)
+    myclose(data.pReadMaster);
+        
+    mysemop(data.semsid, 1); //    - débloquer le master grâce à un second sémaphore (cf. ci-dessous)
+}
+
+typedef struct{
     bool *tab;
     int i;
     int n;
     pthread_mutex_t *mutex;
-};
+} dataThread;
 
 void * codeThread(void * arg){
-    struct dataThread *data = (struct dataThread *) arg;
+    dataThread *data = (dataThread *) arg;
 
     pthread_mutex_lock(data->mutex);
-    for(int j = 2 * data->i; j < data->n; j+=data->i){
+    for(int j = 2 * data->i; j <= data->n; j+=data->i){
         (data->tab)[j-2] = false;
     }
     pthread_mutex_unlock(data->mutex);
@@ -110,16 +169,16 @@ void * codeThread(void * arg){
 
 void sieveOfEratosthenes(int n){
     //Init
-    bool *tab = malloc(sizeof(bool) * n-2);
-    for(int i = 0; i < n-2; i++){
+    bool *tab = malloc(sizeof(bool) * n-1);
+    for(int i = 0; i < n-1; i++){
         tab[i] = true;
     }
     int nbThreads = ((int) sqrt(n)) - 1;
     pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
     //Data init
-    struct dataThread *datas = malloc(sizeof(struct dataThread) * n-2);
-    for(int i = 0; i < n-2; i++){
+    dataThread *datas = malloc(sizeof(dataThread) * n-2);
+    for(int i = 0; i < n-1; i++){
         datas[i].i = i + 2;
         datas[i].n = n;
         datas[i].tab = tab;
@@ -140,7 +199,7 @@ void sieveOfEratosthenes(int n){
 
 
     //print
-    for(int i = 0; i < n-2; i++){
+    for(int i = 0; i < n-1; i++){
         printf("%d : %s   ", i+2, tab[i] ? "true" : "false");
         if(i%10 == 9){
             printf("\n");
@@ -158,67 +217,26 @@ void sieveOfEratosthenes(int n){
 
 int main(int argc, char * argv[])
 {
-    int number = 0;
-    int order = parseArgs(argc, argv, &number);
-    printf("%d\n", order); // pour éviter le warning
+    dataC data;
+    data.n = 0;
+    data.order = parseArgs(argc, argv, &(data.n));  // order peut valoir 5 valeurs (cf. master_client.h) : - ORDER_COMPUTE_PRIME_LOCAL - ORDER_STOP - ORDER_COMPUTE_PRIME - ORDER_HOW_MANY_PRIME - ORDER_HIGHEST_PRIME
+    printf("Order number : %d\n", data.order); // pour éviter le warning
 
-    // order peut valoir 5 valeurs (cf. master_client.h) : - ORDER_COMPUTE_PRIME_LOCAL - ORDER_STOP - ORDER_COMPUTE_PRIME - ORDER_HOW_MANY_PRIME - ORDER_HIGHEST_PRIME
-
-    // si c'est ORDER_COMPUTE_PRIME_LOCAL alors c'est un code complètement à part multi-thread
-    if(order == ORDER_COMPUTE_PRIME_LOCAL){
-        sieveOfEratosthenes(number);
+    if(data.order == ORDER_COMPUTE_PRIME_LOCAL){ // si c'est ORDER_COMPUTE_PRIME_LOCAL alors c'est un code complètement à part multi-thread
+        sieveOfEratosthenes(data.n);
     }
-    // sinon
-    else{
-        //    - entrer en section critique : - pour empêcher que 2 clients communiquent simultanément - le mutex est déjà créé par le master
-        int semtid = semget(CLE_SEM_TUBE, 1, 0); //semaphore pour tubes
-        assert(semtid != -1);
-
-        my_semop(semtid, -1);
-
-        int semsid = semget(CLE_SEM_STOP, 1, 0); //semaphore pour débloquer le master
-        assert(semsid != -1);
-
-
-        //    - ouvrir les tubes nommés (ils sont déjà créés par le master), les ouvertures sont bloquantes, il faut s'assurer que le master ouvre les tubes dans le même ordre
-        int pctm = open(PIPE_CTM, O_WRONLY); //pipe client to master
-        assert(pctm != -1);
-        int pmtc = open(PIPE_MTC, O_RDONLY); //pipe master to client
-        assert(pmtc != -1);
-
-        //    - envoyer l'ordre et les données éventuelles au master
-        int retw = write(pctm, &order, sizeof(int)); //Ecriture de l'argument
-        assert(retw == sizeof(int));
-
-        if(order == ORDER_COMPUTE_PRIME){ //Si on envoie un second argument
-            int secArg = atoi(argv[2]);
-            retw = write(pctm, &secArg, sizeof(int));
-            assert(retw == sizeof(int));
-        }
-
-        //    - attendre la réponse sur le second tube
-        int mRep;
-        int retr = read(pmtc, &mRep, sizeof(int));
-        assert(retr == sizeof(int));
-        printf("Reponse : %d\n", mRep);
-
-        //    - sortir de la section critique
-        my_semop(semtid, 1);
-
-        //    - libérer les ressources (fermeture des tubes, ...)
-        int retp = close(pctm);
-        assert(retp == 0);
-        retp = close(pmtc);
-        assert(retp == 0);
-
-        //    - débloquer le master grâce à un second sémaphore (cf. ci-dessous)
-        my_semop(semsid, 1);
+    else{   //sinon
+        initClient(&data);
         
-        // Une fois que le master a envoyé la réponse au client, il se bloque sur un sémaphore ; le dernier point permet donc au master de continuer
+        sendOrderAndData(data);
+
+        receiveAnswer(data);
+
+        closeClient(data);
     }
     
-    // N'hésitez pas à faire des fonctions annexes ; si la fonction main
-    // ne dépassait pas une trentaine de lignes, ce serait bien.
-    
+    // N'hésitez pas à faire des fonctions annexes ; si la fonction main ne dépassait pas une trentaine de lignes, ce serait bien.
+    printf("Client stopped\n");
+
     return EXIT_SUCCESS;
 }
