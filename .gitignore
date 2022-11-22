@@ -1,1 +1,6 @@
 .vscode
+*.o
+*.d
+PROJET/src/master
+PROJET/src/worker
+PROJET/src/client
