@@ -125,7 +125,7 @@ void receiveAnswer(dataC data){
     if(data.order == ORDER_COMPUTE_PRIME){ //Receive a bool
         bool mRep;
         myread(data.pReadMaster, &mRep, sizeof(bool));
-        printf("Reponse : %d %s premier\n", data.n, mRep ? "est" : "n'est pas");
+        printf("Answer : %d %s prime\n", data.n, mRep ? "is" : "is not");
     }
     else{ // Receive an int
         int mRep;
@@ -207,6 +207,7 @@ void sieveOfEratosthenes(int n){
         }
         
     }
+    printf("Answer : %d %s prime\n",n, tab[n-2] ? "is" : "is not");
 
     //Del data
     pthread_mutex_destroy(&mutex);
