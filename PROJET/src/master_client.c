@@ -14,6 +14,7 @@
 #include "myassert.h"
 
 #include "master_client.h"
+//Devigne Mathis
 
 // fonctions éventuelles internes au fichier
 

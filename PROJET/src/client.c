@@ -17,7 +17,7 @@
 #include "myassert.h"
 
 #include "master_client.h"
-
+//Devigne Mathis
 // chaines possibles pour le premier paramètre de la ligne de commande
 #define TK_STOP      "stop"
 #define TK_COMPUTE   "compute"

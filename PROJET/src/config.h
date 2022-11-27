@@ -3,6 +3,7 @@
 
 // uncomment to use verbose mode
 //#define VERBOSE
+//Devigne Mathis
 
 #ifdef VERBOSE
     #define TRACE(x) fprintf(stderr, (x));

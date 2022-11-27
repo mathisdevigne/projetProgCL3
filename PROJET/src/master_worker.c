@@ -9,6 +9,7 @@
 
 #include "master_worker.h"
 #include "myassert.h"
+//Devigne Mathis
 
 // fonctions éventuelles internes au fichier
 char **prepArgWorker(int readp, int writep, int n){

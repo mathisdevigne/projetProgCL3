@@ -1,5 +1,6 @@
 #ifndef MASTER_WORKER_H
 #define MASTER_WORKER_H
+//Devigne Mathis
 
 // On peut mettre ici des éléments propres au couple master/worker :
 //    - des constantes pour rendre plus lisible les comunications

@@ -1,5 +1,6 @@
 #ifndef CLIENT_CRIBLE
 #define CLIENT_CRIBLE
+//Devigne Mathis
 
 // On peut mettre ici des éléments propres au couple master/client :
 //    - des constantes pour rendre plus lisible les comunications

@@ -20,6 +20,7 @@
 #include "master_client.h"
 #include "master_worker.h"
 
+//Devigne Mathis
 /************************************************************************
  * Données persistantes d'un master
  ************************************************************************/
