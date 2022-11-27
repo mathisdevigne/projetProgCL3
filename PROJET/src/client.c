@@ -199,11 +199,13 @@ void sieveOfEratosthenes(int n){
 
 
     //print
+    printf("Prime number : \n");
     for(int i = 0; i < n-1; i++){
-        printf("%d : %s   ", i+2, tab[i] ? "true" : "false");
-        if(i%10 == 9){
-            printf("\n");
+        if(tab[i]){
+            printf("%d\n", i+2);
+        
         }
+        
     }
 
     //Del data
